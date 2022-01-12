@@ -1,6 +1,5 @@
 #include <Keypad.h>
 #include <FastLED.h>
-#include <arduinoFFT.h>
 
 #define SAMPLES 8        // Must be a power of 2
 #define LED_PIN     8     // Data pin to LEDS
@@ -8,21 +7,17 @@
 #define BRIGHTNESS  255    // from 0 to 255
 #define LED_TYPE    WS2811
 #define COLOR_ORDER GRB 
-int MIC_IN = 0;         // Use A0 for mic input
 
 #define ROWS 8
 #define COLS 8
 
-double vReal[SAMPLES];
-double vImag[SAMPLES] = { };
-int Intensity[COLS] = { }; // initialize Frequency Intensity to zero
-arduinoFFT FFT = arduinoFFT();  // Create FFT object
-
-#define NUM_MODES 4
+#define NUM_MODES 6
 
 int values[ROWS][COLS]; // 2D array to keep track of the current color of each tile
 int mem_values[ROWS][COLS]; // 2D array to keep track Memory Colors
 int brightness[ROWS][COLS]; // 2D array to keep track of the current brightness of each tile
+
+bool escape;
 
 //-----------------------------Button Set Up-----------------------------------------
 const byte rows = 8;
@@ -40,7 +35,7 @@ char keys[rows][cols] = {
 byte rowPins[rows] = {10,9,2,3,4,5,6,7}; //connect to the row pinouts of the keypad
 byte colPins[cols] = {38,40,42,44,46,48,50,52}; //connect to the column pinouts of the keypad
 Keypad buttons = Keypad( makeKeymap(keys), rowPins, colPins, rows, cols );
-//--------------------------=--------------------------------------------------------
+//-----------------------------------------------------------------------------------
 
 CRGB leds[NUM_LEDS];            // Create LED Object
 
@@ -51,12 +46,11 @@ CRGBPalette16 currentPalette;   // Used for christmas mode
 void setup(){
   Serial.begin(9600);
   delay(1000); // power-up safety delay
-  pinMode(MIC_IN, INPUT);
   FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection( TypicalLEDStrip );
   FastLED.setBrightness(  BRIGHTNESS );
   
-  buttons.setHoldTime(1000); // require a 1 second hold to change modes
-  randomSeed(analogRead(1)); //Seed Random
+  buttons.setHoldTime(500); // require a .5 second hold to change modes
+  randomSeed(analogRead(0)); //Seed Random
   clear_display(); //Make sure the display is blank
 }
 
@@ -103,12 +97,21 @@ void loop(){
       break;
     case 4:
       Serial.println("4");
-      Visualizer();
+      tic();
+      break;
+    case 5:
+      Serial.println("5");
+      filler();
+      break;
+    case 6:
+      Serial.println("5");
+      retro();
       break;
   }
 //-------------------------------------------------------*/
 }
 
+//-----------------------------------------------------------------------------------
 void light_tile(int row, int col, int color, int bright){
   if (color == 256)
     bright = 0;
@@ -131,7 +134,9 @@ void clear_display(){
   }
   FastLED.show();
 }
+//-----------------------------------------------------------------------------------
 
+//-----------------------------------------------------------------------------------
 void print_menu(){
   clear_display();
   int color = 0;
@@ -141,7 +146,9 @@ void print_menu(){
   }
   FastLED.show();
 }
+//-----------------------------------------------------------------------------------
 
+//-----------------------------------------------------------------------------------
 void rainbowColors(){
   clear_display(); 
   int bow = 0;
@@ -178,7 +185,9 @@ void rainbowColors(){
     FastLED.show();
   }
 }
+//-----------------------------------------------------------------------------------
 
+//-----------------------------------------------------------------------------------
 void paint(){
   clear_display();
   bool tap = 1;
@@ -202,64 +211,9 @@ void paint(){
       tap = 0;
   }
 }
+//-----------------------------------------------------------------------------------
 
-void Visualizer(){
-  bool tap = 1;
-  clear_display();
-  delay(100);
-  while(tap){
-    int location = buttons.getKey();
-    Serial.println("Loop begin");
-    //Collect Samples
-    for(int i = 0; i < SAMPLES; i++){
-      int aud = analogRead(MIC_IN);
-      Serial.println(aud);
-      vReal[i] = aud;
-      delay(10);
-    }
-    Serial.println("Loop over");
-    //FFT
-    FFT.Windowing(vReal, SAMPLES, FFT_WIN_TYP_HAMMING, FFT_FORWARD);
-    FFT.Compute(vReal, vImag, SAMPLES, FFT_FORWARD);
-    FFT.ComplexToMagnitude(vReal, vImag, SAMPLES);
-    Serial.println("FFT Over");
-    //Update Intensity Array
-    for(int i = 0; i < COLS; i++){
-      vReal[i] = constrain(vReal[i],0 ,2000);            // set max value for input data
-      vReal[i] = map(vReal[i], 0, 2000, 0, ROWS);        // map data to fit our display
-      Serial.print("vReal[i] = ");
-      Serial.println(vReal[i]);
-      Intensity[i] --;                                  // Decrease displayed value
-      if (vReal[i] > Intensity[i])                     // Match displayed value to measured value
-        Intensity[i] = vReal[i];
-      Serial.print("Intensity[i] = ");
-      Serial.println(Intensity[i]);
-    }
-      update_display();
-      if(buttons.getState() == HOLD){
-        tap = 0;
-      }
-    delay(20);
-  }
-  Serial.println("Tap");
-}
-
-void update_display(){
-  int color = 0;
-  for (int i = 0; i < COLS; i++){
-    for (int j = 0; j < ROWS; j++){
-      if(Intensity[i] >= 8 - j )
-        light_tile(j, i, color, 255);
-      else
-        light_tile(j, i, 256, 255);
-    }
-    color += 32;
-    if (color == 256)
-      color = 0;
-  }
-  FastLED.show();
-}
-
+//-----------------------------------------------------------------------------------
 void Memory(){
   clear_display();                    //Clear display
   for(int i = 2; i < 6; i++){         //Print Verticle lines of box
@@ -318,8 +272,8 @@ void Set_Colors(){  //Makes a 4x4 grid of colored pairs in random locations for 
     for(int i = 0; i< 2; i++){        //place each color twice
       bool tile_not_empty = 1;
       while(tile_not_empty){          //don't place color over another color
-        int row = (rand()%4)+2;       //Get random tile
-        int col = (rand()%4)+2;
+        int row = (random()%4)+2;       //Get random tile
+        int col = (random()%4)+2;
         if(mem_values[row][col] == 256){  //Check if tile is empty
           mem_values[row][col] = color;   //Place color
           tile_not_empty = 0;         //Exit loop
@@ -329,32 +283,265 @@ void Set_Colors(){  //Makes a 4x4 grid of colored pairs in random locations for 
     color += 32;                      //Increment Color
   }
 }
+//-----------------------------------------------------------------------------------
 
+//-----------------------------------------------------------------------------------
 void tic(){
   clear_display();
-  for(int i = 2; i < ROWS; i+=3){
-    for(int j = 0; j < COLS; j++){
+  for(int i = 4; i < ROWS; i+=2){
+    for(int j = 0; j < 5; j++){
       light_tile(i, j, 192, 255);
     }
   }
-  for(int i = 0; i < ROWS; i++){
-    for(int j = 2; j < COLS; j+=3){
+  for(int i = 3; i < ROWS; i++){
+    for(int j = 1; j < 4; j+=2){
       light_tile(i, j, 192, 255);
     }
   }
   FastLED.show();
   bool tap = 1;
-  while(tap){
-    int location = buttons.getKey();
-    if (location){
-       int color = values[location/10][(location%10)-1] + 32;
-       if (color > 256)
-          color = 0;
+  bool turn = 0;
+  while(tacwinner()){
+    int location = buttons.waitForKey();
+    if(buttons.getState() == HOLD)
+      return;
+    else if (location){
+      int color = 0;
+      if(turn)
+        color = 120;
       light_tile(location/10, (location%10)-1, color, 255);
       FastLED.show();
       delay(100);
+      turn = !turn;
     }
-    if(buttons.getState() == HOLD)
-      tap = 0;
+  }
+}
+
+bool tacwinner(){
+  for(int i = 3; i < ROWS; i+=2){
+    if (values[i][0] == values[i][2] && values[i][0] == values[i][4]){
+      if (values[i][0] == 0){
+        redwins();
+        return 0;
+      }
+      if (values[i][0] == 120){
+        bluewins();
+        return 0;
+      }
+    }
+  }
+  for(int i = 0; i < 5; i+=2){
+    if (values[3][i] == values[5][i] && values[3][i] == values[7][i]){
+      if (values[3][i] == 0){
+        redwins();
+        return 0;
+      }
+      if (values[3][i] == 120){
+        bluewins();
+        return 0;
+      }
+    }
+  }
+  if (values[3][0] == values[5][2] && values[3][0] == values[7][4]){
+    if (values[3][0] == 0){
+      redwins();
+      return 0;
+    }
+    if (values[3][0] == 120){
+      bluewins();
+      return 0;
+    }
+  }
+  if (values[7][0] == values[5][2] && values[7][0] == values[3][4]){
+    if (values[7][0] == 0){
+      redwins();
+      return 0;
+    }
+    if (values[7][0] == 120){
+      bluewins();
+      return 0;
+    }
+  }
+  for (int i = 3; i < ROWS; i += 2)
+    for (int j = 0; j < 5; j += 2)
+      if (values[i][j] == 256)
+        return 1;
+  nowins();
+  return 0;
+}
+
+void redwins(){
+  for (int i = 0; i < ROWS; i++)
+    for (int j = 0; j < COLS; j++)
+      light_tile(i, j, 0, 255);
+  FastLED.show();
+  delay(3000);
+  clear_display();
+}
+
+void bluewins(){
+  for (int i = 0; i < ROWS; i++)
+    for (int j = 0; j < COLS; j++)
+      light_tile(i, j, 120, 255);
+  FastLED.show();
+  delay(3000);
+  clear_display();
+}
+
+void nowins(){
+  bool yes = 0;
+  for (int i = 0; i < ROWS; i++)
+    for (int j = 0; j < COLS; j++){
+      int color = 0;
+      if(yes)
+        color = 120;
+      light_tile(i, j, color, 255);
+      yes = !yes;
+    }
+  FastLED.show();
+  delay(3000);
+  clear_display();
+}
+//-----------------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------------- 
+
+class Player {
+    bool tiles[8][8];
+  public:
+    int color;
+    void setup (int);
+    void turn();
+    void getSelection();
+    void changeColor();
+    void addBlocks();
+};
+
+void Player::setup (int playerID) {
+  for(int i = 0; i < ROWS; i++)
+    for(int j = 0; j < COLS; j++)
+      tiles[i][j] = 0;
+  if (playerID == 1){
+    tiles[7][0] = 1;
+    color = mem_values[7][0];
+  }
+  else{
+    tiles[1][7] = 1;
+    color = mem_values[1][7];
+  }
+}
+
+
+void Player::turn(){
+  getSelection();
+  changeColor();
+  addBlocks();
+}
+
+void Player::getSelection(){
+  //Get Button
+  int location = buttons.waitForKey();
+  if(location)
+    //Get Color at button
+    color = mem_values[location/10][(location%10)-1];
+}
+
+void Player::changeColor(){
+  //Set all values in mem array to value of color if tiles at that index is 1
+  for(int i = 0; i < ROWS; i++)
+    for(int j = 0; j < COLS; j++){
+      if (tiles[i][j] == 1){
+        mem_values[i][j] = color;
+        light_tile(i, j, color, 150);
+      }
+    }
+  FastLED.show();
+}
+
+void Player::addBlocks(){
+  for(int i = 0; i < ROWS; i++)
+    for(int j = 0; j < COLS; j++)
+      //If a tile is unclaimed, matches the new color, and is adjacent to a claimed tile, then add it to claimed tiles
+      if (tiles[i][j] == 0 && mem_values[i][j] == color && (tiles[i-1][j]==1 || tiles[i+1][j]==1 || tiles[i][j-1]==1 || tiles[i][j+1]==1))
+        tiles[i][j] = 1;
+}
+
+void filler(){
+  clear_display();
+  initializeBoard();
+  Player P1;
+  Player P2;
+  P1.setup(1);
+  P2.setup(2);
+  escape = 1;
+  while(escape){
+    P1.turn();
+    P2.turn();
+    escape = gameOver(P1.color);
+  }
+}
+
+bool gameOver(int c){
+  int last = c, current;
+  for(int i = 1; i < ROWS; i++)
+    for(int j = 0; j < COLS; j++){
+      current = mem_values[i][j];
+      if ( current != last)
+         return 1;
+    }
+  return 0;
+}
+
+void initializeBoard(){
+  for(int i = 0; i < ROWS; i++)
+    for(int j = 0; j < COLS; j++)
+      mem_values[i][j] = 256;
+  for(int i = 1; i < ROWS; i++)
+    for(int j = 0; j < COLS; j++)
+      while(mem_values[i][j] == 256 || mem_values[i][j] == mem_values[i-1][j] || mem_values[i][j] == mem_values[i][j-1]){
+        mem_values[i][j] = (random()%6) * 42;
+      }
+  for(int i = 0; i < ROWS; i++)
+    for(int j = 0; j < COLS; j++)
+      light_tile(i, j, mem_values[i][j], 150);
+  FastLED.show();
+}
+
+//-----------------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------------- 
+
+void retro(){
+  clear_display();
+  int brt = 255;
+  for(int i = 0; i < ROWS; i++){
+    for(int j = 0; j < COLS; j++){
+      if(random()%2 == 0)
+        light_tile(i, j, 256, brt);
+      else{
+        int col = 128 + (32 * (random() % 4));
+        light_tile(i, j, col, brt);
+      }
+    }
+  }
+  FastLED.show();
+  bool tap = 1;
+  while(tap){
+    int r = random() % ROWS;
+    int c = random() % COLS;
+    if (values[r][c] == 256){
+      int col = 128 + (32 * (random() % 4));
+      for (int b = 0; b <= 255; b++){
+        light_tile(r, c, col, b);
+        FastLED.show();
+      }
+    }
+    else{
+      for (int b = 255; b >= 0; b--){
+        light_tile(r, c, values[r][c], b);
+        FastLED.show();
+      }
+      light_tile(r, c, 256, 255);
+    }
   }
 }
